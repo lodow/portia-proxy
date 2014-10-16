@@ -41,6 +41,8 @@ class IblSpider(Spider):
 
     def __init__(self, name, spec, item_schemas, all_extractors, **kw):
         super(IblSpider, self).__init__(name, **kw)
+        # Fill with your proxy list (self.proxy_pool = ['proxy_address1', 'proxy_address2', ...])
+        self.proxy_pool = []
         spec = deepcopy(spec)
         for key, val in kw.items():
             if isinstance(val, basestring) and key in ['start_urls', 'exclude_patterns', 'follow_patterns', 'allowed_domains']:
@@ -100,13 +102,16 @@ class IblSpider(Spider):
     def _process_start_urls(self, spec):
         self.start_urls = spec.get('start_urls')
         for url in self.start_urls:
-            self._start_requests.append(Request(url, callback=self.parse, dont_filter=True))
+            req = Request(url, callback=self.parse, dont_filter=True)
+            req.meta['proxy'] = self.proxyPool()
+            self._start_requests.append(req)
 
     def _create_init_requests(self, spec):
         for rdata in spec:
             if rdata["type"] == "login":
                 request = Request(url=rdata.pop("loginurl"), meta=rdata,
                                   callback=self.parse_login_page, dont_filter=True)
+                request.meta['proxy'] = self.proxyPool()
                 self.login_requests.append(request)
             elif rdata["type"] == "form":
                 self.form_requests.append(self.get_generic_form_start_request(rdata))
@@ -133,8 +138,10 @@ class IblSpider(Spider):
             return FormRequest(self.generic_form.get_value(field_descriptor), meta=form_descriptor,
                               callback=self.parse_field_url_page, dont_filter=True)
         else:
-            return Request(url=form_descriptor.pop("form_url"), meta=form_descriptor,
+            req = Request(url=form_descriptor.pop("form_url"), meta=form_descriptor,
                                   callback=self.parse_form_page, dont_filter=True)
+            req.meta['proxy'] = self.proxyPool()
+            return req
 
     def parse_field_url_page(self, response):
         form_descriptor = response.request.meta
@@ -195,6 +202,7 @@ class IblSpider(Spider):
             if url not in seen:
                 seen.add(url)
                 request = Request(url)
+                request.meta['proxy'] = self.proxyPool()
                 if link.text:
                     request.meta['link_text'] = link.text
                 return request
@@ -217,9 +225,15 @@ class IblSpider(Spider):
             linkextractor = create_linkextractor_from_specs(lspecs)
             def _callback(spider, response):
                 for link in linkextractor.links_to_follow(response):
-                    yield Request(url=link.url, callback=spider.parse)
-            return Request(url=url, callback=_callback)
-        return Request(url=url, callback=self.parse)
+                    req = Request(url=link.url, callback=spider.parse)
+                    req.meta['proxy'] = self.proxyPool()
+                    yield req
+            req = Request(url=url, callback=_callback)
+            req.meta['proxy'] = self.proxyPool()
+            return req
+        req = Request(url=url, callback=self.parse)
+        req.meta['proxy'] = self.proxyPool()
+        return req
 
     def parse(self, response):
         """Main handler for all downloaded responses"""
@@ -320,3 +334,7 @@ class IblSpider(Spider):
         else:
             self.url_filterf = url_filterf
 
+    def proxyPool(self):
+        if len(self.proxy_pool) == 0:
+            return ""
+        return self.proxy_pool[random.randint(0,len(self.proxy_pool) - 1)]
