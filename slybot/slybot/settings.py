@@ -8,6 +8,9 @@ FEED_EXPORTERS = {
     'csv': 'slybot.exporter.SlybotCSVItemExporter',
 }
 CSV_EXPORT_FIELDS = None
+DOWNLOADER_MIDDLEWARES = {
+    'scrapy.contrib.downloadermiddleware.retry.RetryMiddleware': 5,
+}
 
 try:
     from local_slybot_settings import *

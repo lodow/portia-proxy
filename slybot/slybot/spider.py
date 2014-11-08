@@ -1,6 +1,11 @@
 import itertools
+import time
+import MySQLdb as mdb
+import sys
+import random
 import operator
 import re
+from multiprocessing import Pool
 from copy import deepcopy
 
 from scrapy import log
@@ -41,20 +46,19 @@ class IblSpider(Spider):
 
     def __init__(self, name, spec, item_schemas, all_extractors, **kw):
         super(IblSpider, self).__init__(name, **kw)
-        # Fill with your proxy list (self.proxy_pool = ['proxy_address1', 'proxy_address2', ...])
-        self.proxy_pool = []
+	
         spec = deepcopy(spec)
         for key, val in kw.items():
             if isinstance(val, basestring) and key in ['start_urls', 'exclude_patterns', 'follow_patterns', 'allowed_domains']:
                 val = val.splitlines()
             spec[key] = val
-
+	self.i = time.time()
+	self.getProxyList()
         self._item_template_pages = sorted((
             [t['scrapes'], dict_to_page(t, 'annotated_body'),
             t.get('extractors', [])] \
             for t in spec['templates'] if t.get('page_type', 'item') == 'item'
-        ), key=lambda pair: pair[0])
-
+        ), key=lambda pair: pair[0])	
         # generate ibl extractor for links pages
         _links_pages = [dict_to_page(t, 'annotated_body')
                 for t in spec['templates'] if t.get('page_type') == 'links']
@@ -335,6 +339,23 @@ class IblSpider(Spider):
             self.url_filterf = url_filterf
 
     def proxyPool(self):
-        if len(self.proxy_pool) == 0:
-            return ""
-        return self.proxy_pool[random.randint(0,len(self.proxy_pool) - 1)]
+	if self.i + 30 < time.time():
+	    self.getProxyList()
+	    self.i = time.time()
+        while len(self.proxy_pool) == 0:
+	    time.sleep(10)
+	    self.getProxyList()
+        return self.proxy_pool[random.randint(0,len(self.proxy_pool) - 1)][0]
+
+    def getProxyList(self):
+	try:
+    	    con = mdb.connect('localhost', 'user', 'pass', 'db');
+	    cur = con.cursor()
+	    cur.execute("SELECT fld_name FROM tbl_name`;")
+	    self.proxy_pool = cur.fetchall()
+	except mdb.Error, e:
+    	    print "Error %s: %s" % (e.args[0],e.args[1])
+    	    sys.exit(1)
+	finally:
+    	    if con:
+                con.close()
